@@ -3,10 +3,10 @@ from __future__ import print_function, unicode_literals
 from prompt_toolkit.application import Application
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.bindings.focus import focus_next, focus_previous
-from prompt_toolkit.layout.containers import HSplit, VSplit, Window, FloatContainer, Align
+from prompt_toolkit.layout.containers import HSplit, VSplit, Window, FloatContainer, VerticalAlign
 from prompt_toolkit.layout.controls import FormattedTextControl
-from prompt_toolkit.layout.widgets import Box, Frame, TextArea
-from prompt_toolkit.layout.widgets.base import Border
+#from prompt_toolkit.layout.widgets import Box, Frame, TextArea
+from prompt_toolkit.widgets.base import Border
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.layout.dimension import D
 from prompt_toolkit.styles import Style
@@ -17,6 +17,8 @@ from prompt_toolkit.formatted_text import HTML
 DEFAULT_ROW_WIDTH = 70
 
 
+#import pydevd; pydevd.settrace(port=3000)
+
 class YarnApplication(object):
     """A Yarn application."""
 
@@ -26,12 +28,18 @@ class YarnApplication(object):
         self.progress = progress
         self.status = status
 
+    @property
+    def fields(self):
+        return [self.app_id, self.name, self.progress, self.status]
+
     def as_text(self, width=DEFAULT_ROW_WIDTH):
-        col_width = width / 4
-        return '{}{}{}{}'.format(self.app_id.ljust(col_width),
-                                 self.name.ljust(col_width),
-                                 self.progress.ljust(col_width),
-                                 self.status.ljust(col_width))
+        col_width = int(width / 4)
+
+        def _as_text(val):
+            txt = ' ' + val
+            txt = txt.ljust(col_width)
+            return txt[:col_width]
+        return ''.join([_as_text(f) for f in self.fields])
 
 
 class YarnWatcher(object):
@@ -60,7 +68,25 @@ def create_application_table(yarn_watcher):
     """Create table with the list of applications."""
 
     def get_text():
-        return '\n'.join(a.as_text() for a in yarn_watcher.apps)
+        result = []
+        result.append(('', Border.TOP_LEFT))
+        result.append(('', Border.HORIZONTAL * (DEFAULT_ROW_WIDTH - 2)))
+        result.append(('', Border.TOP_RIGHT))
+        result.append(('', '\n'))
+        for a in yarn_watcher.apps:
+            result.append(('', Border.VERTICAL))
+            if a == yarn_watcher.current_application:
+                result.append(('[SetCursorPosition]', ''))
+                result.append(('class:table.current', a.as_text()))
+            else:
+                result.append(('', a.as_text()))
+            result.append(('', Border.VERTICAL))
+            result.append(('', '\n'))
+        result.append(('', Border.BOTTOM_LEFT))
+        result.append(('', Border.HORIZONTAL * (DEFAULT_ROW_WIDTH - 2)))
+        result.append(('', Border.BOTTOM_RIGHT))
+        result.append(('', '\n'))
+        return result
 
     kb = KeyBindings()
 
@@ -72,26 +98,44 @@ def create_application_table(yarn_watcher):
     def _(event):
         yarn_watcher.select_next()
 
-    def cursor_position():
-        return Point(x=0, y=yarn_watcher.selected_index)
-
     control = FormattedTextControl(
         get_text,
-        focussable=True,
-        get_cursor_position=cursor_position,
+        focusable=True,
         key_bindings=kb)
 
-    return Window(control, width=DEFAULT_ROW_WIDTH, cursorline=True, style='class:table')
+    return Window(control,
+                  width=DEFAULT_ROW_WIDTH,
+                  always_hide_cursor=True,
+                  style='class:table')
 
 
 def create_application_details(yarn_watcher):
     """Create application details window."""
+    def get_text(width=DEFAULT_ROW_WIDTH):
+        def _row(val, st=''):
+            return [(st, Border.VERTICAL),
+                    (st, val.ljust(width-2)[:width-2]),
+                    (st, Border.VERTICAL),
+                    (st, '\n')]
 
-    def get_text():
-        return 'Selected: {}'.format(yarn_watcher.current_application.app_id)
+        curr = yarn_watcher.current_application
+        result = []
+        result.append(('', Border.TOP_LEFT))
+        result.append(('', Border.HORIZONTAL * (width - 2)))
+        result.append(('', Border.TOP_RIGHT))
+        result.append(('', '\n'))
+        result.extend(_row('Application ID: {}'.format(curr.app_id)))
+        result.extend(_row('Name: {}'.format(curr.name)))
+        result.extend(_row('Progress: {}%'.format(curr.progress)))
+        result.extend(_row('Status: {}'.format(curr.status),
+                           'class:status.{}'.format(curr.status).lower()))
+        result.append(('', Border.BOTTOM_LEFT))
+        result.append(('', Border.HORIZONTAL * (width - 2)))
+        result.append(('', Border.BOTTOM_RIGHT))
+        result.append(('', '\n'))
+        return result
 
-    control = FormattedTextControl(get_text,
-                                   focussable=False)
+    control = FormattedTextControl(get_text, focusable=False)
 
     return Window(control, width=DEFAULT_ROW_WIDTH, style='class:details')
 
@@ -128,9 +172,12 @@ def create_application_details(yarn_watcher):
 # Styling.
 style = Style([
     ('table', 'bg:#268bd2 #ffffff'),
-    ('table.border', '#eee8d5'),
+    ('table.current', 'bg:#cccccc #000000'),
     ('table.border shadow', '#444444'),
-    ('details', 'bg:#666666 #000000'),
+    ('details', 'bg:#cccccc #000000'),
+    ('status.finished', '#228b22'),
+    ('status.running', '#0066cc'),
+    ('status.failed', '#cc0000'),
     ('header', 'bg:#eee8d5 #002b36'),
     ('footer', 'bg:#2aa198 #002b36'),
     ('shortcut', 'bold underline'),
@@ -147,7 +194,7 @@ def create_layout(yarn_watcher):
 
     # Toolbars.
     titlebar_text = HTML(
-        '<strong>YARN Application Watcher</strong> Press <shortcut>[Ctrl-Q]</shortcut> to quit.')
+        '<strong>YARN Application Watcher</strong> Press <shortcut>[Ctrl-C]</shortcut> to quit.')
 
     bottom_toolbar_text = HTML(
         '<shortcut>[Ctrl-C]</shortcut>: quit  '
@@ -160,7 +207,7 @@ def create_layout(yarn_watcher):
             # The titlebar.
             Window(height=1,
                    content=FormattedTextControl(titlebar_text),
-                   align=Align.CENTER,
+                   align=VerticalAlign.CENTER,
                    style='class:header'),
 
             # The table.
@@ -177,7 +224,7 @@ def create_layout(yarn_watcher):
         ]),
         floats=[])
 
-    return Layout(root_container, focussed_window=app_table)
+    return Layout(root_container, focused_element=app_table)
 
 
 kb = KeyBindings()
@@ -187,7 +234,7 @@ kb = KeyBindings()
 @kb.add('c-q', eager=True)
 def _(event):
     """Pressing Ctrl-Q or Ctrl-C will exit the user interface."""
-    event.app.set_result(None)
+    event.app.exit()
 
 
 def cli():
@@ -200,3 +247,4 @@ def cli():
         style=style
     )
     application.run()
+
