@@ -2,7 +2,6 @@ from setuptools import setup, find_packages
 
 install_requirements = [
     'yarn-api-client==0.2.3',
-#    'http://github.com/jonathanslenders/python-prompt-toolkit/tarball/2.0#egg=prompt_toolkit-dev'
     'prompt-toolkit>=2.0.0'
 ]
 

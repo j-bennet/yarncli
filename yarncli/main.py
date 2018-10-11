@@ -3,9 +3,9 @@ from __future__ import print_function, unicode_literals
 from prompt_toolkit.application import Application
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.key_binding.bindings.focus import focus_next, focus_previous
-from prompt_toolkit.layout.containers import HSplit, VSplit, Window, FloatContainer, VerticalAlign
+from prompt_toolkit.layout.containers import HSplit, VSplit, Window, FloatContainer, VerticalAlign, HorizontalAlign
 from prompt_toolkit.layout.controls import FormattedTextControl
-#from prompt_toolkit.layout.widgets import Box, Frame, TextArea
+from prompt_toolkit.widgets import Box, Frame, TextArea, Button
 from prompt_toolkit.widgets.base import Border
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.layout.dimension import D
@@ -215,6 +215,12 @@ def create_layout(yarn_watcher):
                 app_table,
                 app_details
             ]),
+
+            # bottom buttons
+
+            VSplit([Button('Resource Manager', width=30),
+                    Button('Node Manager', width=30)],
+                   align=VerticalAlign.CENTER),
 
             # bottom toolbar.
             Window(height=1,
